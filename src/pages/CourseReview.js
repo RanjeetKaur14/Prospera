@@ -1,14 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../firebase';
 import { doc, getDoc, updateDoc, arrayUnion, collection, getDocs, query, orderBy } from 'firebase/firestore';
+import ReactMarkdown from 'react-markdown';
+
+const fontStyle = {
+  fontFamily: "'Cormorant Garamond', serif",
+};
 
 export default function CourseReview() {
   const { courseId } = useParams();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const [phase, setPhase] = useState('discussion'); // 'discussion', 'test', 'analysis'
+  const [phase, setPhase] = useState('discussion');
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -20,6 +25,15 @@ export default function CourseReview() {
   const [courseContent, setCourseContent] = useState('');
   const [error, setError] = useState('');
   const [analysis, setAnalysis] = useState('');
+  const messagesEndRef = useRef(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   useEffect(() => {
     async function fetchCourseContent() {
@@ -42,7 +56,7 @@ export default function CourseReview() {
     if (phase === 'discussion' && messages.length === 0 && courseContent) {
       const initialMessage = {
         role: 'assistant',
-        content: `Congratulations on completing all modules in the ${courseId} course! I'm your Dragon Coach. Let's discuss what you've learned. What key concepts stood out to you? Feel free to ask any questions.`
+        content: `Congratulations on completing all modules in the **${courseId}** course! I'm your **Dragon Coach**. Let's discuss what you've learned. What key concepts stood out to you? Feel free to ask any questions.`
       };
       setMessages([initialMessage]);
     }
@@ -97,62 +111,75 @@ export default function CourseReview() {
     }
   };
 
-  const generateTest = async () => {
-    setLoading(true);
-    setError('');
+ const generateTest = async () => {
+  setLoading(true);
+  setError('');
+  try {
+    const apiKey = process.env.REACT_APP_GROQ_API_KEY;
+    if (!apiKey) throw new Error('API key not found.');
+
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'llama-3.1-8b-instant',
+        messages: [
+          {
+            role: 'system',
+            content: `Generate 10 multiple-choice questions based on this course content: ${courseContent}.
+                      Each question should have 4 options (A, B, C, D) and indicate the correct answer.
+                      Output in valid JSON format like:
+                      {
+                        "questions": [
+                          {
+                            "question": "What is a budget?",
+                            "options": ["A) ...", "B) ...", "C) ...", "D) ..."],
+                            "correct": "A"
+                          },
+                          ...
+                        ]
+                      }`
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 2000
+      })
+    });
+
+    if (!response.ok) throw new Error(`API error (${response.status})`);
+    const data = await response.json();
+    if (!data.choices?.[0]?.message) throw new Error('Invalid API response');
+
+    const content = data.choices[0].message.content;
+    console.log('Raw content:', content); // Debug log
+
+    // Try to parse the whole content as JSON first
+    let parsed;
     try {
-      const apiKey = process.env.REACT_APP_GROQ_API_KEY;
-      if (!apiKey) throw new Error('API key not found.');
-
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'llama-3.1-8b-instant',
-          messages: [
-            {
-              role: 'system',
-              content: `Generate 10 multiple-choice questions based on this course content: ${courseContent}.
-                        Each question should have 4 options (A, B, C, D) and indicate the correct answer.
-                        Output in valid JSON format like:
-                        {
-                          "questions": [
-                            {
-                              "question": "What is a budget?",
-                              "options": ["A) ...", "B) ...", "C) ...", "D) ..."],
-                              "correct": "A"
-                            },
-                            ...
-                          ]
-                        }`
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 2000
-        })
-      });
-
-      if (!response.ok) throw new Error(`API error (${response.status})`);
-      const data = await response.json();
-      if (!data.choices?.[0]?.message) throw new Error('Invalid API response');
-
-      const content = data.choices[0].message.content;
+      parsed = JSON.parse(content);
+    } catch (e) {
+      // If that fails, try to extract JSON from markdown code block or just the object
       const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error('Could not parse JSON from response');
-      const parsed = JSON.parse(jsonMatch[0]);
-      if (!parsed.questions || !Array.isArray(parsed.questions)) throw new Error('Invalid questions format');
-      setQuestions(parsed.questions);
-      setPhase('test');
-    } catch (error) {
-      console.error('Error generating test:', error);
-      setError(error.message);
-    } finally {
-      setLoading(false);
+      if (!jsonMatch) throw new Error('Could not find JSON in response');
+      const jsonString = jsonMatch[0];
+      // Attempt to clean up trailing commas (simple version)
+      const cleaned = jsonString.replace(/,(\s*[}\]])/g, '$1');
+      parsed = JSON.parse(cleaned);
     }
-  };
+
+    if (!parsed.questions || !Array.isArray(parsed.questions)) throw new Error('Invalid questions format');
+    setQuestions(parsed.questions);
+    setPhase('test');
+  } catch (error) {
+    console.error('Error generating test:', error);
+    setError(error.message);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleAnswerChange = (index, value) => {
     setAnswers({ ...answers, [index]: value });
@@ -182,7 +209,6 @@ export default function CourseReview() {
     }
   };
 
-  // NEW: Generate detailed analysis using Groq
   const generateAnalysis = async () => {
     setLoading(true);
     setError('');
@@ -190,7 +216,6 @@ export default function CourseReview() {
       const apiKey = process.env.REACT_APP_GROQ_API_KEY;
       if (!apiKey) throw new Error('API key not found.');
 
-      // Build a summary of the test results
       const questionsData = questions.map((q, idx) => ({
         question: q.question,
         options: q.options,
@@ -243,7 +268,7 @@ ${JSON.stringify(questionsData, null, 2)}`;
     setSubmitted(false);
     setScore(null);
     setAnalysis('');
-    generateTest(); // generate new questions
+    generateTest();
   };
 
   const finish = () => {
@@ -252,10 +277,10 @@ ${JSON.stringify(questionsData, null, 2)}`;
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-black via-red-950 to-black text-white p-6">
+      <div className="min-h-screen p-6" style={{ backgroundImage: `url('/coursevbackground.png')`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
         <div className="max-w-4xl mx-auto text-center">
-          <p className="text-red-400 text-xl mb-4">Error: {error}</p>
-          <button onClick={() => navigate('/dashboard')} className="px-6 py-2 bg-red-600 rounded-lg">
+          <p className="text-rose-600 text-2xl mb-4" style={fontStyle}>Error: {error}</p>
+          <button onClick={() => navigate('/dashboard')} className="px-6 py-2 bg-rose-600 text-white text-lg hover:bg-rose-700 transition">
             Back to Dashboard
           </button>
         </div>
@@ -264,25 +289,65 @@ ${JSON.stringify(questionsData, null, 2)}`;
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-black via-red-950 to-black text-white p-6">
+    <div
+      className="min-h-screen p-6"
+      style={{
+        backgroundImage: `url('/coursevbackground.png')`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundAttachment: 'fixed',
+        fontFamily: "'Cormorant Garamond', serif",
+      }}
+    >
+      <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&display=swap" rel="stylesheet" />
+
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-red-400 to-orange-400 mb-6 capitalize">
+        {/* Header with back button */}
+        <div className="flex items-center justify-between mb-6">
+          <button
+            onClick={() => navigate('/courses')}
+            className="px-5 py-1 border border-rose-600/30 text-rose-700 hover:text-rose-900 hover:border-rose-600 transition rounded-sm text-base tracking-wide"
+            style={fontStyle}
+          >
+            ← All Courses
+          </button>
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="px-5 py-1 border border-rose-600/30 text-rose-700 hover:text-rose-900 hover:border-rose-600 transition rounded-sm text-base tracking-wide"
+            style={fontStyle}
+          >
+            Dashboard
+          </button>
+        </div>
+
+        <h1 className="text-5xl font-bold text-rose-800 drop-shadow-md mb-6 capitalize" style={fontStyle}>
           {courseId} Course Review
         </h1>
 
         {phase === 'discussion' && (
-          <div className="bg-black/60 backdrop-blur rounded-2xl border border-red-500/30 p-6">
-            <div className="h-96 overflow-y-auto mb-4 space-y-3 p-4">
+          <div className="bg-white/40 backdrop-blur-md border border-rose-200/60 p-6 shadow-lg">
+            <div className="h-[400px] overflow-y-auto mb-4 space-y-4 p-2">
               {messages.map((msg, idx) => (
                 <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[80%] p-3 rounded-lg ${
-                    msg.role === 'user' ? 'bg-red-600 text-white' : 'bg-gray-800 text-gray-200'
+                  <div className={`max-w-[80%] p-4 rounded-sm ${
+                    msg.role === 'user' 
+                      ? 'bg-rose-600 text-white' 
+                      : 'bg-white/40 text-rose-800'
                   }`}>
-                    {msg.content}
+                    <div className="prose prose-rose max-w-none text-base">
+                      <ReactMarkdown>{msg.content}</ReactMarkdown>
+                    </div>
                   </div>
                 </div>
               ))}
-              {loading && <div className="text-gray-400">Thinking...</div>}
+              {loading && (
+                <div className="flex justify-start">
+                  <div className="bg-white/40 text-rose-600 p-4 rounded-sm">
+                    <span className="animate-pulse">...</span>
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
             </div>
 
             <div className="flex gap-2">
@@ -291,16 +356,25 @@ ${JSON.stringify(questionsData, null, 2)}`;
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-                className="flex-1 bg-black/60 border border-red-700 rounded-lg px-4 py-2 text-white"
+                className="flex-1 bg-white/40 border border-rose-200 rounded-sm px-4 py-3 text-rose-900 placeholder-rose-400 text-base"
                 placeholder="Ask your dragon..."
               />
-              <button onClick={sendMessage} disabled={loading} className="px-6 py-2 bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50">
+              <button
+                onClick={sendMessage}
+                disabled={loading}
+                className="px-6 py-3 bg-rose-600 text-white text-lg hover:bg-rose-700 disabled:opacity-50 transition"
+              >
                 Send
               </button>
             </div>
 
             <div className="mt-6 text-center">
-              <button onClick={generateTest} disabled={loading} className="px-8 py-3 bg-gradient-to-r from-red-600 to-orange-600 rounded-xl font-bold">
+              <button
+                onClick={generateTest}
+                disabled={loading}
+                className="px-8 py-3 bg-rose-600 text-white text-xl font-semibold hover:bg-rose-700 transition"
+                style={fontStyle}
+              >
                 I'm Ready for the Test
               </button>
             </div>
@@ -308,13 +382,13 @@ ${JSON.stringify(questionsData, null, 2)}`;
         )}
 
         {phase === 'test' && !submitted && (
-          <div className="bg-black/60 backdrop-blur rounded-2xl border border-red-500/30 p-6">
-            <h2 className="text-2xl font-bold text-red-400 mb-4">Test Your Knowledge</h2>
-            <p className="text-gray-300 mb-6">Answer all 10 questions. You need 70% to pass.</p>
+          <div className="bg-white/40 backdrop-blur-md border border-rose-200/60 p-6 shadow-lg">
+            <h2 className="text-3xl font-bold text-rose-800 mb-4" style={fontStyle}>Test Your Knowledge</h2>
+            <p className="text-rose-600 text-lg mb-6">Answer all 10 questions. You need 70% to pass.</p>
 
             {questions.map((q, idx) => (
-              <div key={idx} className="mb-6 p-4 bg-black/40 rounded-lg">
-                <p className="font-semibold text-red-300 mb-2">{idx+1}. {q.question}</p>
+              <div key={idx} className="mb-6 p-4 bg-white/40 border border-rose-100">
+                <p className="font-semibold text-rose-800 text-xl mb-2" style={fontStyle}>{idx+1}. {q.question}</p>
                 <div className="space-y-2">
                   {q.options.map((opt, optIdx) => {
                     const optionLetter = String.fromCharCode(65 + optIdx);
@@ -326,9 +400,9 @@ ${JSON.stringify(questionsData, null, 2)}`;
                           value={optionLetter}
                           checked={answers[idx] === optionLetter}
                           onChange={() => handleAnswerChange(idx, optionLetter)}
-                          className="accent-red-500"
+                          className="accent-rose-600"
                         />
-                        <span>{opt}</span>
+                        <span className="text-rose-700 text-base">{opt}</span>
                       </label>
                     );
                   })}
@@ -339,7 +413,8 @@ ${JSON.stringify(questionsData, null, 2)}`;
             <button
               onClick={submitTest}
               disabled={Object.keys(answers).length < questions.length}
-              className="w-full py-3 bg-gradient-to-r from-red-600 to-orange-600 rounded-xl font-bold disabled:opacity-50"
+              className="w-full py-3 bg-rose-600 text-white text-xl font-semibold disabled:opacity-50 hover:bg-rose-700 transition"
+              style={fontStyle}
             >
               Submit Test
             </button>
@@ -347,25 +422,25 @@ ${JSON.stringify(questionsData, null, 2)}`;
         )}
 
         {submitted && phase !== 'analysis' && (
-          <div className="bg-black/60 backdrop-blur rounded-2xl border border-red-500/30 p-8 text-center">
-            <h2 className="text-3xl font-bold mb-4">{passed ? '🎉 Passed!' : '😞 Not Passed'}</h2>
-            <p className="text-2xl mb-2">Your score: {score}%</p>
-            <p className="text-gray-300 mb-6">Passing score: 70%</p>
+          <div className="bg-white/40 backdrop-blur-md border border-rose-200/60 p-8 text-center shadow-lg">
+            <h2 className="text-4xl font-bold text-rose-800 mb-4" style={fontStyle}>{passed ? 'Passed!' : 'Not Passed'}</h2>
+            <p className="text-3xl text-rose-700 mb-2">Your score: {score}%</p>
+            <p className="text-rose-600 text-xl mb-6">Passing score: 70%</p>
 
             {passed ? (
               <div>
-                <p className="text-green-400 mb-4">Congratulations! You've mastered the {courseId} course.</p>
-                <div className="flex gap-4 justify-center">
+                <p className="text-green-700 text-xl mb-4" style={fontStyle}>Congratulations! You've mastered the {courseId} course.</p>
+                <div className="flex gap-4 justify-center flex-wrap">
                   <button
                     onClick={generateAnalysis}
                     disabled={loading}
-                    className="px-6 py-2 bg-blue-600 rounded-lg hover:bg-blue-700"
+                    className="px-6 py-2 bg-rose-600 text-white text-lg hover:bg-rose-700 transition"
                   >
                     {loading ? 'Generating...' : 'Get Detailed Analysis'}
                   </button>
                   <button
                     onClick={finish}
-                    className="px-6 py-2 bg-gradient-to-r from-green-600 to-teal-600 rounded-lg"
+                    className="px-6 py-2 bg-rose-600 text-white text-lg hover:bg-rose-700 transition"
                   >
                     Return to Dashboard
                   </button>
@@ -373,18 +448,18 @@ ${JSON.stringify(questionsData, null, 2)}`;
               </div>
             ) : (
               <div>
-                <p className="text-red-400 mb-4">Don't worry, you can review and try again.</p>
-                <div className="flex gap-4 justify-center">
+                <p className="text-rose-600 text-xl mb-4" style={fontStyle}>Don't worry, you can review and try again.</p>
+                <div className="flex gap-4 justify-center flex-wrap">
                   <button
                     onClick={generateAnalysis}
                     disabled={loading}
-                    className="px-6 py-2 bg-blue-600 rounded-lg hover:bg-blue-700"
+                    className="px-6 py-2 bg-rose-600 text-white text-lg hover:bg-rose-700 transition"
                   >
                     {loading ? 'Generating...' : 'Get Detailed Analysis'}
                   </button>
                   <button
                     onClick={retryTest}
-                    className="px-6 py-2 bg-gradient-to-r from-red-600 to-orange-600 rounded-lg"
+                    className="px-6 py-2 bg-rose-600 text-white text-lg hover:bg-rose-700 transition"
                   >
                     Try Again
                   </button>
@@ -395,21 +470,21 @@ ${JSON.stringify(questionsData, null, 2)}`;
         )}
 
         {phase === 'analysis' && (
-          <div className="bg-black/60 backdrop-blur rounded-2xl border border-red-500/30 p-8">
-            <h2 className="text-2xl font-bold text-red-400 mb-4">📊 Detailed Analysis</h2>
-            <div className="prose prose-invert max-w-none text-gray-200 whitespace-pre-wrap">
-              {analysis}
+          <div className="bg-white/40 backdrop-blur-md border border-rose-200/60 p-8 shadow-lg">
+            <h2 className="text-3xl font-bold text-rose-800 mb-4" style={fontStyle}>Detailed Analysis</h2>
+            <div className="prose prose-rose max-w-none text-rose-800 bg-white/40 p-6 rounded-sm max-h-[500px] overflow-y-auto text-lg">
+              <ReactMarkdown>{analysis}</ReactMarkdown>
             </div>
-            <div className="mt-6 flex gap-4 justify-center">
+            <div className="mt-6 flex gap-4 justify-center flex-wrap">
               <button
                 onClick={() => setPhase('discussion')}
-                className="px-6 py-2 bg-red-600 rounded-lg hover:bg-red-700"
+                className="px-6 py-2 bg-rose-600 text-white text-lg hover:bg-rose-700 transition"
               >
                 Back to Discussion
               </button>
               <button
                 onClick={finish}
-                className="px-6 py-2 bg-gradient-to-r from-green-600 to-teal-600 rounded-lg"
+                className="px-6 py-2 bg-rose-600 text-white text-lg hover:bg-rose-700 transition"
               >
                 Return to Dashboard
               </button>

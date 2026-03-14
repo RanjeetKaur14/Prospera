@@ -3,7 +3,10 @@ import { Link, useNavigate } from "react-router-dom";
 import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 import { auth, db } from "../firebase";
-import DragonIcon from "../components/DragonIcon";
+
+const fontStyle = {
+  fontFamily: "'Cormorant Garamond', serif",
+};
 
 export default function Signup() {
   const [name, setName] = useState("");
@@ -19,7 +22,7 @@ export default function Signup() {
       const user = userCredential.user;
       await updateProfile(user, { displayName: name });
 
-      // Create user document in Firestore with initial dragon level
+      // Create user document in Firestore
       await setDoc(doc(db, "users", user.uid), {
         name: name,
         email: email,
@@ -27,70 +30,90 @@ export default function Signup() {
         xp: 0,
         coins: 100,
         completedModules: [],
+        completedDailyQuests: [],
+        completedMonthlyMissions: [],
+        lastDailyReset: new Date().toISOString().split('T')[0],
+        lastMonthlyReset: new Date().toISOString().slice(0, 7),
+        streak: 0,
+        lastActiveDate: new Date().toISOString().split('T')[0],
+        badges: [],
         createdAt: new Date().toISOString(),
-      });
+      }); 
 
-      navigate("/");
+      navigate("/onboarding");
     } catch (err) {
       setError(err.message);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-black via-red-950 to-black flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-black/50 backdrop-blur-lg p-8 rounded-2xl border border-red-500/30 shadow-2xl shadow-red-900/50">
+    <div
+      className="min-h-screen flex items-center justify-center p-4"
+      style={{
+        backgroundImage: `url('/signup.png')`, // same as login; change if needed
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        fontFamily: "'Cormorant Garamond', serif",
+      }}
+    >
+      <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&display=swap" rel="stylesheet" />
+
+      <div className="max-w-md w-full bg-white/40 backdrop-blur-md border border-rose-200/60 p-8 shadow-lg">
         <div className="text-center mb-8">
-          <DragonIcon className="w-24 h-24 mx-auto text-red-500" />
-          <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-red-400 to-orange-400 mt-4">
+          <h1 className="text-5xl font-bold text-rose-800 drop-shadow-md" style={fontStyle}>
             Hatch Your Dragon
           </h1>
-          <p className="text-gray-400">Begin your financial journey</p>
+          <p className="text-rose-600 text-lg mt-2">Begin your financial journey</p>
         </div>
 
         <form onSubmit={handleSignup} className="space-y-5">
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Your Name</label>
+            <label className="block text-base font-medium text-rose-700 mb-1">Your Name</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-4 py-3 bg-black/60 border border-red-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 text-white"
+              className="w-full px-4 py-3 bg-white/60 border border-rose-200 rounded-sm focus:outline-none focus:ring-2 focus:ring-rose-400 text-rose-900 placeholder-rose-400"
+              placeholder="Dragon Rider"
               required
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Email</label>
+            <label className="block text-base font-medium text-rose-700 mb-1">Email</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 bg-black/60 border border-red-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 text-white"
+              className="w-full px-4 py-3 bg-white/60 border border-rose-200 rounded-sm focus:outline-none focus:ring-2 focus:ring-rose-400 text-rose-900 placeholder-rose-400"
+              placeholder="your@email.com"
               required
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Password</label>
+            <label className="block text-base font-medium text-rose-700 mb-1">Password</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 bg-black/60 border border-red-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 text-white"
+              className="w-full px-4 py-3 bg-white/60 border border-rose-200 rounded-sm focus:outline-none focus:ring-2 focus:ring-rose-400 text-rose-900 placeholder-rose-400"
+              placeholder="••••••••"
               required
               minLength={6}
             />
           </div>
-          {error && <p className="text-red-400 text-sm">{error}</p>}
+          {error && <p className="text-rose-500 text-base">{error}</p>}
           <button
             type="submit"
-            className="w-full py-3 bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 rounded-xl font-bold text-lg shadow-lg shadow-red-600/30 transition transform hover:scale-[1.02]"
+            className="w-full py-3 bg-rose-600 text-white font-semibold text-lg shadow hover:bg-rose-700 transition transform hover:scale-[1.02]"
+            style={fontStyle}
           >
             Hatch Dragon
           </button>
         </form>
 
-        <p className="text-center mt-6 text-gray-400">
+        <p className="text-center mt-6 text-rose-600 text-lg">
           Already have a dragon?{" "}
-          <Link to="/login" className="text-red-400 hover:text-red-300 underline">
+          <Link to="/login" className="text-rose-700 hover:text-rose-800 underline font-semibold">
             Enter the lair
           </Link>
         </p>

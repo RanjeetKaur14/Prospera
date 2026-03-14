@@ -2,7 +2,10 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../firebase";
-import DragonIcon from "../components/DragonIcon";
+
+const fontStyle = {
+  fontFamily: "'Cormorant Garamond', serif",
+};
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -11,63 +14,82 @@ export default function Login() {
   const navigate = useNavigate();
 
   const handleLogin = async (e) => {
-  e.preventDefault();
-  try {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    console.log("Success!", userCredential.user);
-    // ✅ Navigate to dashboard after successful login
-    navigate('/dashboard');
-  } catch (error) {
-    console.error("Firebase Error Code:", error.code);
-    alert(error.message); 
-  }
-};
-
+    e.preventDefault();
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      console.log("Success!", userCredential.user);
+      navigate('/dashboard');
+    } catch (error) {
+      console.error("Firebase Error Code:", error.code);
+      alert(error.message);
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-black via-red-950 to-black flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-black/50 backdrop-blur-lg p-8 rounded-2xl border border-red-500/30 shadow-2xl shadow-red-900/50">
+    <div className="relative min-h-screen flex items-center justify-center p-4 overflow-hidden">
+      {/* Video Background */}
+      <video
+        autoPlay
+        loop
+        muted
+        playsInline
+        className="absolute top-0 left-0 w-full h-full object-cover z-0"
+      >
+        <source src="/dragon.mp4" type="video/mp4" />
+        Your browser does not support the video tag.
+      </video>
+
+      {/* Optional overlay for better contrast */}
+      <div className="absolute top-0 left-0 w-full h-full bg-black/30 z-0"></div>
+
+      {/* Google Fonts link */}
+      <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&display=swap" rel="stylesheet" />
+
+      {/* Login Card */}
+      <div className="relative z-10 max-w-md w-full bg-white/40 backdrop-blur-md border border-rose-200/60 p-8 shadow-lg">
         <div className="text-center mb-8">
-          <DragonIcon className="w-24 h-24 mx-auto text-red-500" />
-          <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-red-400 to-orange-400 mt-4">
+          <h1 className="text-5xl font-bold text-rose-800 drop-shadow-md" style={fontStyle}>
             Prospera
           </h1>
-          <p className="text-gray-400">Enter your lair to begin your quest</p>
+          <p className="text-rose-600 text-lg mt-2">Enter your lair to begin your quest</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-5">
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Email</label>
+            <label className="block text-base font-medium text-rose-700 mb-1">Email</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 bg-black/60 border border-red-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 text-white"
+              className="w-full px-4 py-3 bg-white/60 border border-rose-200 rounded-sm focus:outline-none focus:ring-2 focus:ring-rose-400 text-rose-900 placeholder-rose-300"
+              placeholder="your@email.com"
               required
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Password</label>
+            <label className="block text-base font-medium text-rose-700 mb-1">Password</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 bg-black/60 border border-red-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 text-white"
+              className="w-full px-4 py-3 bg-white/60 border border-rose-200 rounded-sm focus:outline-none focus:ring-2 focus:ring-rose-400 text-rose-900 placeholder-rose-300"
+              placeholder="••••••••"
               required
             />
           </div>
-          {error && <p className="text-red-400 text-sm">{error}</p>}
+          {error && <p className="text-rose-500 text-base">{error}</p>}
           <button
             type="submit"
-            className="w-full py-3 bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 rounded-xl font-bold text-lg shadow-lg shadow-red-600/30 transition transform hover:scale-[1.02]"
+            className="w-full py-3 bg-rose-600 text-white font-semibold text-lg shadow hover:bg-rose-700 transition transform hover:scale-[1.02]"
+            style={fontStyle}
           >
             Enter the Lair
           </button>
         </form>
 
-        <p className="text-center mt-6 text-gray-400">
+        <p className="text-center mt-6 text-rose-600 text-lg">
           New adventurer?{" "}
-          <Link to="/signup" className="text-red-400 hover:text-red-300 underline">
+          <Link to="/signup" className="text-rose-700 hover:text-rose-800 underline font-semibold">
             Forge your dragon
           </Link>
         </p>

@@ -1,11 +1,7 @@
 fastapi
 uvicorn
-sqlalchemy
-psycopg2-binary
-pydantic-settings
-python-jose[cryptography]
-passlib[bcrypt]
-python-multipart
-python-dotenv
+joblib
 pandas
-matplotlib
+numpy
+firebase-admin
+python-multipart

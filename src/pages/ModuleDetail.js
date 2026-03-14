@@ -3,37 +3,43 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../firebase';
 import { doc, getDoc, updateDoc, arrayUnion, increment, collection, getDocs, query, orderBy } from 'firebase/firestore';
+import ReactMarkdown from 'react-markdown';
+
+const fontStyle = {
+  fontFamily: "'Cormorant Garamond', serif",
+};
 
 export default function ModuleDetail() {
   const { courseId, moduleId } = useParams();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const [module, setModule] = useState(null);
-  const [course, setCourse] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
+  const [detailedContent, setDetailedContent] = useState('');
 
   useEffect(() => {
     async function fetchModule() {
       try {
-        // Fetch module data
         const moduleRef = doc(db, 'courses', courseId, 'modules', moduleId);
         const moduleSnap = await getDoc(moduleRef);
         if (!moduleSnap.exists()) {
           navigate(`/course/${courseId}`);
           return;
         }
-        setModule({ id: moduleSnap.id, ...moduleSnap.data() });
+        const moduleData = { id: moduleSnap.id, ...moduleSnap.data() };
+        setModule(moduleData);
 
-        // Fetch course description (optional)
-        const courseRef = doc(db, 'courses', courseId);
-        const courseSnap = await getDoc(courseRef);
-        if (courseSnap.exists()) {
-          setCourse(courseSnap.data());
+        // Check if detailed content already exists
+        if (moduleData.detailedContent) {
+          setDetailedContent(moduleData.detailedContent);
+        } else {
+          // Generate content using Groq
+          await generateDetailedContent(moduleData);
         }
 
-        // Check if user already completed this module
         const userRef = doc(db, 'users', currentUser.uid);
         const userSnap = await getDoc(userRef);
         if (userSnap.exists()) {
@@ -49,9 +55,57 @@ export default function ModuleDetail() {
     fetchModule();
   }, [courseId, moduleId, currentUser, navigate]);
 
+  const generateDetailedContent = async (moduleData) => {
+    setGenerating(true);
+    try {
+      const apiKey = process.env.REACT_APP_GROQ_API_KEY;
+      if (!apiKey) throw new Error('API key not found.');
+
+      const prompt = `You are a financial education expert. Create a detailed, engaging lesson on the topic "${moduleData.title}" based on this brief description: "${moduleData.description}".
+      The lesson should be structured like a mini research paper or textbook chapter with:
+      - An introduction
+      - Several sections with headings (##)
+      - Bullet points or numbered lists where appropriate
+      - Real-world examples
+      - Key takeaways
+      - A summary
+      Format the entire response in markdown. Make it comprehensive and suitable for a learner.`;
+
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'llama-3.1-8b-instant',
+          messages: [
+            { role: 'system', content: 'You are a helpful financial tutor.' },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.7,
+          max_tokens: 2000
+        })
+      });
+
+      if (!response.ok) throw new Error(`API error (${response.status})`);
+      const data = await response.json();
+      const content = data.choices[0].message.content;
+
+      // Save to Firestore
+      const moduleRef = doc(db, 'courses', courseId, 'modules', moduleId);
+      await updateDoc(moduleRef, { detailedContent: content });
+      setDetailedContent(content);
+    } catch (error) {
+      console.error('Error generating content:', error);
+      setDetailedContent('Failed to generate content. Please try again later.');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   const handleComplete = async () => {
     if (isCompleted) {
-      // If already completed, just go to next/review
       goToNextModule();
       return;
     }
@@ -61,14 +115,12 @@ export default function ModuleDetail() {
       const userRef = doc(db, 'users', currentUser.uid);
       const moduleXp = module.xp || 50;
 
-      // Update user document
       await updateDoc(userRef, {
         completedModules: arrayUnion(`${courseId}_${moduleId}`),
-        xp: increment(moduleXp)   // use "xp" not "totalXP" to match your schema
+        xp: increment(moduleXp)
       });
 
       setIsCompleted(true);
-      // After marking complete, go to next module or review
       goToNextModule();
     } catch (error) {
       console.error('Error completing module:', error);
@@ -80,7 +132,6 @@ export default function ModuleDetail() {
 
   const goToNextModule = async () => {
     try {
-      // Fetch all modules for this course
       const modulesCol = collection(db, 'courses', courseId, 'modules');
       const modulesQuery = query(modulesCol, orderBy('order'));
       const modulesSnap = await getDocs(modulesQuery);
@@ -89,18 +140,14 @@ export default function ModuleDetail() {
         ...doc.data()
       }));
 
-      // Get user's completed modules
       const userRef = doc(db, 'users', currentUser.uid);
       const userSnap = await getDoc(userRef);
       const completed = userSnap.exists() ? (userSnap.data().completedModules || []) : [];
 
-      // Find first module not completed
       const nextModule = allModules.find(m => !completed.includes(`${courseId}_${m.id}`));
-
       if (nextModule) {
         navigate(`/course/${courseId}/module/${nextModule.id}`);
       } else {
-        // All modules completed → go to review page
         navigate(`/course/${courseId}/review`);
       }
     } catch (error) {
@@ -111,46 +158,66 @@ export default function ModuleDetail() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-black via-gray-900 to-fire-950 text-white flex items-center justify-center">
-        <div className="text-fire-500 text-2xl animate-pulse">Loading lesson...</div>
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundImage: `url('/moduledetail.png')`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
+        <div className="text-rose-700 text-2xl animate-pulse" style={fontStyle}>Loading module...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-black via-gray-900 to-fire-950 text-white p-6">
-      <div className="max-w-3xl mx-auto">
+    <div
+      className="min-h-screen p-6"
+      style={{
+        backgroundImage: `url('/moduledetail.png')`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundAttachment: 'fixed',
+        fontFamily: "'Cormorant Garamond', serif",
+      }}
+    >
+      <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&display=swap" rel="stylesheet" />
+
+      <div className="max-w-4xl mx-auto">
         <div className="flex items-center space-x-4 mb-6">
           <button
             onClick={() => navigate(`/course/${courseId}`)}
-            className="text-fire-400 hover:text-fire-300"
+            className="px-5 py-1 border border-rose-600/30 text-rose-700 hover:text-rose-900 hover:border-rose-600 transition rounded-sm text-base tracking-wide"
+            style={fontStyle}
           >
             ← Back to Modules
           </button>
         </div>
 
-        <div className="bg-black/40 backdrop-blur-sm rounded-2xl border border-fire-700 p-8 mb-8">
-          <h1 className="text-3xl font-bold text-fire-500 mb-4">{module.title}</h1>
-          <div className="prose prose-invert max-w-none text-fire-100 whitespace-pre-wrap">
-            {module.description}
-          </div>
-
-          {module.xp && (
-            <div className="mt-4 text-fire-400">Reward: {module.xp} XP</div>
+        <div className="bg-white/40 backdrop-blur-md border border-rose-200/60 p-8 mb-8 shadow-lg">
+          <h1 className="text-4xl font-bold text-rose-800 mb-4" style={fontStyle}>{module?.title}</h1>
+          {generating ? (
+            <div className="text-rose-600 text-xl animate-pulse">Crafting your lesson...</div>
+          ) : (
+            <div className="prose prose-rose max-w-none text-rose-800 text-lg">
+              <ReactMarkdown>{detailedContent || module?.description}</ReactMarkdown>
+            </div>
+          )}
+          {module?.xp && (
+            <div className="mt-4 text-rose-600 bg-white/40 inline-block px-4 py-2 rounded-sm text-base">
+              Reward: {module.xp} XP
+            </div>
           )}
         </div>
 
         <button
           onClick={handleComplete}
-          disabled={completing}
-          className={`w-full py-4 rounded-xl font-bold text-xl transition ${
+          disabled={completing || generating}
+          className={`w-full py-4 font-bold text-xl transition ${
             isCompleted
-              ? 'bg-green-600 hover:bg-green-700'
-              : 'bg-fire-600 hover:bg-fire-700'
+              ? 'bg-green-600 text-white hover:bg-green-700'
+              : 'bg-rose-600 text-white hover:bg-rose-700'
           }`}
+          style={fontStyle}
         >
           {completing
             ? 'Completing...'
+            : generating
+            ? 'Generating lesson...'
             : isCompleted
             ? 'Already Completed - Next →'
             : 'Complete & Continue'}

@@ -1,6 +1,10 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import Leaderboard from './pages/Leaderboard';
+import Analytics from './pages/Analytics';
+import PrerequisiteTest from './pages/PrerequisiteTest';
+
 
 import ProtectedRoute from './components/ProtectedRoute';
 import Onboarding from './components/Onboarding';
@@ -71,7 +75,9 @@ function App() {
     </ProtectedRoute>
   }
 />
-
+          <Route path="/leaderboard" element={<ProtectedRoute><Leaderboard /></ProtectedRoute>} />
+<Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
+<Route path="/test/:courseId" element={<ProtectedRoute><PrerequisiteTest /></ProtectedRoute>} />
           <Route path="/" element={<Login />} />
         </Routes>
       </AuthProvider>

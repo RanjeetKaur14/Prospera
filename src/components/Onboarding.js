@@ -1,103 +1,138 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../firebase';
-import { doc, updateDoc, setDoc } from 'firebase/firestore';
-import DragonIcon from '../components/DragonIcon';
+import { doc, updateDoc } from 'firebase/firestore';
+
+const fontStyle = {
+  fontFamily: "'Cormorant Garamond', serif",
+};
 
 export default function Onboarding() {
+  const [step, setStep] = useState(1);
+  const [loading, setLoading] = useState(false);
   const { currentUser } = useAuth();
   const navigate = useNavigate();
-  const [step, setStep] = useState(1);
-  const [formData, setFormData] = useState({
-    ageRange: '',
-    financialGoals: [],
-    incomeRange: '',
-  });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
 
-  const goalsList = ['Saving', 'Investing', 'Budgeting', 'Debt Control'];
+  // Form state
+  const [age, setAge] = useState('');
+  const [occupation, setOccupation] = useState('');
+  const [country, setCountry] = useState('');
+  const [monthlyIncome, setMonthlyIncome] = useState('');
+  const [currentSavings, setCurrentSavings] = useState('');
+  const [financialGoal, setFinancialGoal] = useState('');
+  const [riskTolerance, setRiskTolerance] = useState('');
+  const [estimatedMonthlySpending, setEstimatedMonthlySpending] = useState('');
+  const [mainSpendingCategories, setMainSpendingCategories] = useState('');
 
-  const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    if (type === 'checkbox') {
-      const updatedGoals = checked
-        ? [...formData.financialGoals, value]
-        : formData.financialGoals.filter(goal => goal !== value);
-      setFormData({ ...formData, financialGoals: updatedGoals });
-    } else {
-      setFormData({ ...formData, [name]: value });
+  // Redirect if no user
+  useEffect(() => {
+    if (!currentUser) {
+      navigate('/login');
     }
-  };
+  }, [currentUser, navigate]);
 
-  const getRecommendedCourse = (ageRange) => {
-    if (ageRange === '15-20') return 'beginner';
-    if (ageRange === '21-40') return 'intermediate';
-    if (ageRange === '41+') return 'advanced';
-    return 'beginner'; // default
+  // Helper to determine recommended course based on age
+  const getRecommendedCourse = (age) => {
+    const ageNum = parseInt(age);
+    if (isNaN(ageNum)) return 'beginner';
+    if (ageNum >= 15 && ageNum <= 20) return 'beginner';
+    if (ageNum >= 21 && ageNum <= 40) return 'intermediate';
+    return 'advanced'; // 41+
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (step < 3) {
+      setStep(step + 1);
+      return;
+    }
+
     setLoading(true);
-    setError('');
     try {
       const userRef = doc(db, 'users', currentUser.uid);
-      const recommendedCourse = getRecommendedCourse(formData.ageRange);
+      const recommendedCourse = getRecommendedCourse(age);
       await updateDoc(userRef, {
-        ...formData,
-        recommendedCourse,
-        passedPrerequisites: [], // initialize empty array
+        age: parseInt(age) || null,
+        occupation,
+        country,
+        monthly_income_range: monthlyIncome,
+        current_savings_range: currentSavings,
+        financial_goal: financialGoal,
+        risk_tolerance: riskTolerance,
+        estimated_monthly_spending: estimatedMonthlySpending,
+        main_spending_categories: mainSpendingCategories,
         onboardingCompleted: true,
+        recommendedCourse,                    // ← store recommended course
+        passedPrerequisiteTests: [],          // ← initialize empty array
       });
-      navigate('/dashboard');
+      
+      navigate('/dashboard?new=true');
     } catch (err) {
-      setError(err.message);
+      console.error(err);
+      alert('Failed to save profile. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-black via-red-950 to-black flex items-center justify-center p-4">
-      <div className="max-w-2xl w-full bg-black/50 backdrop-blur-lg p-8 rounded-2xl border border-red-500/30 shadow-2xl shadow-red-900/50">
-        <div className="text-center mb-8">
-          <DragonIcon className="w-24 h-24 mx-auto text-red-500" />
-          <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-red-400 to-orange-400 mt-4">
-            Awaken Your Dragon
-          </h1>
-          <p className="text-gray-400">Tell us about yourself to begin your quest</p>
-        </div>
+    <div
+      className="min-h-screen flex items-center justify-center p-4"
+      style={{
+        backgroundImage: `url('/onboardingbackground.png')`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        fontFamily: "'Cormorant Garamond', serif",
+      }}
+    >
+      <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&display=swap" rel="stylesheet" />
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+      <div className="max-w-md w-full bg-white/40 backdrop-blur-md border border-rose-200/60 p-8 shadow-lg">
+        <h1 className="text-4xl font-bold text-rose-800 mb-2 text-center" style={fontStyle}>
+          Welcome to Prospera
+        </h1>
+        <p className="text-center text-rose-600 text-lg mb-6">
+          {step === 1 && "Let's get to know you better."}
+          {step === 2 && "Tell us about your finances."}
+          {step === 3 && "How do you spend your money?"}
+        </p>
+
+        <form onSubmit={handleSubmit} className="space-y-5">
           {step === 1 && (
             <>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Select your age range
-                </label>
-                <select
-                  name="ageRange"
-                  value={formData.ageRange}
-                  onChange={handleChange}
+                <label className="block text-rose-700 text-base mb-1">Age</label>
+                <input
+                  type="number"
+                  value={age}
+                  onChange={(e) => setAge(e.target.value)}
+                  className="w-full px-4 py-3 bg-white/60 border border-rose-200 rounded-sm text-rose-900 placeholder-rose-400"
+                  placeholder="e.g. 25"
                   required
-                  className="w-full px-4 py-3 bg-black/60 border border-red-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 text-white"
-                >
-                  <option value="">-- Choose --</option>
-                  <option value="15-20">15-20 years</option>
-                  <option value="21-40">21-40 years</option>
-                  <option value="41+">41+ years</option>
-                </select>
+                />
               </div>
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => setStep(2)}
-                  className="px-6 py-2 bg-red-600 rounded-lg hover:bg-red-700"
-                >
-                  Next
-                </button>
+              <div>
+                <label className="block text-rose-700 text-base mb-1">Occupation</label>
+                <input
+                  type="text"
+                  value={occupation}
+                  onChange={(e) => setOccupation(e.target.value)}
+                  className="w-full px-4 py-3 bg-white/60 border border-rose-200 rounded-sm text-rose-900 placeholder-rose-400"
+                  placeholder="e.g. Software Engineer"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-rose-700 text-base mb-1">Country</label>
+                <input
+                  type="text"
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                  className="w-full px-4 py-3 bg-white/60 border border-rose-200 rounded-sm text-rose-900 placeholder-rose-400"
+                  placeholder="e.g. United States"
+                  required
+                />
               </div>
             </>
           )}
@@ -105,63 +140,127 @@ export default function Onboarding() {
           {step === 2 && (
             <>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Financial Goals (select all that apply)
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {goalsList.map(goal => (
-                    <label key={goal} className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        name="financialGoals"
-                        value={goal}
-                        checked={formData.financialGoals.includes(goal)}
-                        onChange={handleChange}
-                        className="accent-red-500"
-                      />
-                      <span className="text-gray-300">{goal}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Monthly Income (approx)
-                </label>
+                <label className="block text-rose-700 text-base mb-1">Monthly Income Range</label>
                 <select
-                  name="incomeRange"
-                  value={formData.incomeRange}
-                  onChange={handleChange}
+                  value={monthlyIncome}
+                  onChange={(e) => setMonthlyIncome(e.target.value)}
+                  className="w-full px-4 py-3 bg-white/60 border border-rose-200 rounded-sm text-rose-900"
                   required
-                  className="w-full px-4 py-3 bg-black/60 border border-red-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 text-white"
                 >
-                  <option value="">-- Select --</option>
-                  <option value="<25k">Less than ₹25,000</option>
-                  <option value="25k-50k">₹25,000 - ₹50,000</option>
-                  <option value="50k-100k">₹50,000 - ₹1,00,000</option>
-                  <option value=">100k">More than ₹1,00,000</option>
+                  <option value="" disabled>Select a range</option>
+                  <option value="Under $2,000">Under $2,000</option>
+                  <option value="$2,000 - $5,000">$2,000 - $5,000</option>
+                  <option value="$5,000 - $10,000">$5,000 - $10,000</option>
+                  <option value="Over $10,000">Over $10,000</option>
                 </select>
               </div>
-              <div className="flex justify-between">
-                <button
-                  type="button"
-                  onClick={() => setStep(1)}
-                  className="px-6 py-2 bg-gray-700 rounded-lg hover:bg-gray-600"
+              <div>
+                <label className="block text-rose-700 text-base mb-1">Current Savings Range</label>
+                <select
+                  value={currentSavings}
+                  onChange={(e) => setCurrentSavings(e.target.value)}
+                  className="w-full px-4 py-3 bg-white/60 border border-rose-200 rounded-sm text-rose-900"
+                  required
                 >
-                  Back
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="px-6 py-2 bg-gradient-to-r from-red-600 to-orange-600 rounded-lg font-bold hover:from-red-700 hover:to-orange-700 disabled:opacity-50"
+                  <option value="" disabled>Select a range</option>
+                  <option value="Under $1,000">Under $1,000</option>
+                  <option value="$1,000 - $10,000">$1,000 - $10,000</option>
+                  <option value="$10,000 - $50,000">$10,000 - $50,000</option>
+                  <option value="Over $50,000">Over $50,000</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-rose-700 text-base mb-1">Risk Tolerance</label>
+                <select
+                  value={riskTolerance}
+                  onChange={(e) => setRiskTolerance(e.target.value)}
+                  className="w-full px-4 py-3 bg-white/60 border border-rose-200 rounded-sm text-rose-900"
+                  required
                 >
-                  {loading ? 'Saving...' : 'Complete Onboarding'}
-                </button>
+                  <option value="" disabled>Select</option>
+                  <option value="Low">Low (Safe investments)</option>
+                  <option value="Medium">Medium (Balanced)</option>
+                  <option value="High">High (Aggressive growth)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-rose-700 text-base mb-1">Primary Financial Goal</label>
+                <input
+                  type="text"
+                  value={financialGoal}
+                  onChange={(e) => setFinancialGoal(e.target.value)}
+                  className="w-full px-4 py-3 bg-white/60 border border-rose-200 rounded-sm text-rose-900 placeholder-rose-400"
+                  placeholder="e.g. Buying a house, retiring early"
+                  required
+                />
               </div>
             </>
           )}
+
+          {step === 3 && (
+            <>
+              <div>
+                <label className="block text-rose-700 text-base mb-1">Estimated Monthly Spending</label>
+                <select
+                  value={estimatedMonthlySpending}
+                  onChange={(e) => setEstimatedMonthlySpending(e.target.value)}
+                  className="w-full px-4 py-3 bg-white/60 border border-rose-200 rounded-sm text-rose-900"
+                  required
+                >
+                  <option value="" disabled>Select a range</option>
+                  <option value="Under $1,000">Under $1,000</option>
+                  <option value="$1,000 - $3,000">$1,000 - $3,000</option>
+                  <option value="$3,000 - $6,000">$3,000 - $6,000</option>
+                  <option value="Over $6,000">Over $6,000</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-rose-700 text-base mb-1">Main Spending Categories</label>
+                <input
+                  type="text"
+                  value={mainSpendingCategories}
+                  onChange={(e) => setMainSpendingCategories(e.target.value)}
+                  className="w-full px-4 py-3 bg-white/60 border border-rose-200 rounded-sm text-rose-900 placeholder-rose-400"
+                  placeholder="e.g. Rent, Groceries, Entertainment"
+                  required
+                />
+              </div>
+            </>
+          )}
+
+          <div className="flex gap-3 pt-2">
+            {step > 1 && (
+              <button
+                type="button"
+                onClick={() => setStep(step - 1)}
+                className="flex-1 py-3 bg-white/40 border border-rose-300 text-rose-700 hover:bg-white/60 transition"
+                style={fontStyle}
+              >
+                Back
+              </button>
+            )}
+            <button
+              type="submit"
+              className={`${step > 1 ? 'flex-[2]' : 'w-full'} py-3 bg-rose-600 text-white hover:bg-rose-700 transition disabled:opacity-50`}
+              style={fontStyle}
+              disabled={loading}
+            >
+              {loading ? 'Saving...' : step < 3 ? 'Continue' : 'Complete Setup'}
+            </button>
+          </div>
         </form>
-        {error && <p className="text-red-400 text-sm mt-4">{error}</p>}
+
+        {/* Step indicators */}
+        <div className="flex justify-center mt-6 gap-2">
+          {[1, 2, 3].map((s) => (
+            <div
+              key={s}
+              className={`h-2 w-2 rounded-full transition-all ${
+                s === step ? 'bg-rose-600 w-4' : 'bg-rose-200'
+              }`}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );
