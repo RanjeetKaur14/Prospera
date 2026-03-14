@@ -25,3 +25,5 @@ Thumbs.db
 
 # build artifacts
 dist/
+backend/firebase-adminsdk.json
+backend/*.json
